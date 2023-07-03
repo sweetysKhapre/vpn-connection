@@ -1,0 +1,114 @@
+steps:
+
+we are creating two VPC in different regions : Virgenia=aws-side
+					       Ohio=customer-side
+AWS-SIDE (Virgenia)
+1a> Create VPC > name : AWS-Side > CIDR : 10.1.0.0/16 > Create
+
+2a> Create Subnet > name : AWS-side-subnet > select you created VPC > AZ (anyone) > CIDR : 10.1.0.0/24 > Create
+
+3a> Create Internet Gateway > name: AWS-side-igw > create
+    Action > attach to VPC > attach
+
+4a> Route Table > Already Created > give a name: AWS-route > Select your vpc > routes > add route
+   0.0.0.0/0(source)    --> Internet Gateway (destination)
+   subnet association > edit subnet association > Subnet without explicit association
+   Select > save
+
+5a> Create an instance > select Amazone linux 2 AMI (HVM) SSD, Volume Type
+    VPC : AWS-side > edit Network settings: auto public ip : enabled > Create Security group >
+    SSH Anywhere > give key > launch
+   Go to instance > Security group > Inbound rule ->edit > add rule
+   ICMP IPV4----anywhere > save
+    
+--------------------
+
+Customer-side (ohio)
+1b> Create VPC > name : Customer-end > CIDR : 10.2.0.0/16 > Create
+
+2b> Create Subnet > name : customer-subnet > select you created VPC > AZ (anyone) > CIDR : 10.2.0.0/24 > Create
+
+3b> Create Internet Gateway > name: customer-igw > create
+    Action > attach to VPC > attach
+
+4b> Route Table > Already Created > <give a name: customer-route > Select your vpc > routes > add route
+   0.0.0.0/0(source)    --> Internet Gateway (destination)
+   subnet association > edit subnet association > Subnet without explicit association
+   Select > save
+
+5b> Create an instance > select Amazone linux 2 AMI (HVM) SSD, Volume Type
+    VPC : customer-end > edit Network settings: auto public ip : enabled > Create Security group >
+    SSH Anywhere
+    ALL TCP  Anywhere
+    All ICMP  Anywhere 
+    give key > launch
+ 
+--------
+
+6> Go to AWS-side > VPN  > Virtual Private Gateway >create > name: AWS-side-gw > create
+   Select > Action > Attach to VPC > AWS-side (VPC) > Attach
+  
+7> Create > Customer Gateway > name : CG-Aws-side IP Adress : Public ip of customer-side instance > Create
+
+8> Site-to site VPN Connection > create > name: Virgenia-Ohio > virtual private Gateway : select aws side > Customer gateway : Existing >
+   Customer gateway ID : CG-AWS-side > Routing options : Static > Static IP : (ohio >Subnet > 10.2.0.0/16) > Create 
+
+9> Downlaod Configuration file > Checksum > vendor : Openswam > downlaod
+
+10> Go to Route table (aws-side) > route propogation > edit route propogation > select enable > save
+
+11> Take public ip of customer-side instance > take ssh on MOBAXTERM
+
+12>   a) sudo su
+      b) yum install openswan -y
+
+      c) check downloaded notepad and follow instructions :
+      vim /etc/sysctl.conf  > add following lines
+          net.ipv4.ip_forward = 1
+          net.ipv4.conf.default.rp_filter = 0
+          net.ipv4.conf.default.accept_source_route = 0
+     :wq 
+
+     d) sysctl -p
+
+     e) Go to vim /etc/ipsec.conf > remove # from #include /etc/ipsec.d/*.conf > :wq
+
+     g) create file vim  /etc/ipsec.d/aws.conf  > put following lines from config file
+      conn Tunnel1
+	authby=secret
+	auto=start
+	left=%defaultroute
+	leftid=18.188.243.235
+	right=52.44.227.203
+	type=tunnel
+	ikelifetime=8h
+	keylife=1h
+	phase2alg=aes128-sha1;modp1024
+	ike=aes128-sha1;modp1024
+	auth=esp
+	keyingtries=%forever
+	keyexchange=ike
+	leftsubnet=10.2.0.0/16
+	rightsubnet=10.1.0.0/16
+	dpddelay=10
+	dpdtimeout=30
+	dpdaction=restart_by_peer
+
+      Remove auth=esp line > put left subnet : vpc cidr of customer-side > right subnet : Vpc of aws-side
+   
+    :wq
+
+   h) create file vim /etc/ipsec.d/aws.secrets > paste the following line from config file
+     18.188.243.235 52.44.227.203: PSK "zZxOchQV11jKRbvJCqLDb.q6yAoZ4L9r" 
+     :wq
+
+   i) systemctl start ipsec
+      systemctl status ipsec --->> ACTIVE
+
+   j) go to site-to site connection > tunnels > you will see tunnel 1 --> UP status > successfull
+      ping <private ip of aws-side-instance)
+      connection done
+       
+
+
+
